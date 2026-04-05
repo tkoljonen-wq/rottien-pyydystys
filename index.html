@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Rottien Pyydystys</title>
-  <link rel="manifest" href="/manifest.json" />
+  <link rel="manifest" href="manifest.json" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -241,7 +241,7 @@
     getFirestore, collection, addDoc, deleteDoc, doc,
     onSnapshot, orderBy, query, Timestamp
   } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-  import { firebaseConfig } from '/firebase-config.js';
+  import { firebaseConfig } from './firebase-config.js';
 
   // --- Init ---
   const app = initializeApp(firebaseConfig);
@@ -250,7 +250,7 @@
 
   // --- PWA service worker ---
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js');
+    navigator.serviceWorker.register('./sw.js');
   }
 
   // --- Aika-syöte: oletuksena nyt ---
