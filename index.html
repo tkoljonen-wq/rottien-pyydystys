@@ -284,7 +284,8 @@
   function setNyt() {
     const now = new Date();
     now.setSeconds(0, 0);
-    aikaEl.value = now.toISOString().slice(0, 16);
+    const offset = now.getTimezoneOffset() * 60000;
+    aikaEl.value = new Date(now - offset).toISOString().slice(0, 16);
   }
   setNyt();
 
