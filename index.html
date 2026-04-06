@@ -7,7 +7,7 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Rottien Pyydystys</title>
+  <title>Rottien &amp; Hiirten Pyydystys</title>
   <link rel="manifest" href="manifest.json" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -100,21 +100,29 @@
       border-color: var(--accent);
     }
 
-    button#tallenna {
-      background: var(--accent);
+    .btn-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    .btn-saalis {
+      flex: 1;
       color: #fff;
       border: none;
       border-radius: 8px;
       font-size: 1rem;
       font-weight: 600;
-      padding: 12px 18px;
+      padding: 12px 10px;
       cursor: pointer;
       white-space: nowrap;
       transition: opacity 0.15s;
     }
 
-    button#tallenna:active { opacity: 0.8; }
-    button#tallenna:disabled { opacity: 0.4; cursor: not-allowed; }
+    #tallenna-rotta { background: var(--accent); }
+    #tallenna-hiiri { background: #7b4fcf; }
+
+    .btn-saalis:active { opacity: 0.8; }
+    .btn-saalis:disabled { opacity: 0.4; cursor: not-allowed; }
 
     /* --- Tilastokortti --- */
     .stat {
@@ -187,6 +195,12 @@
 
     .tapahtuma .poista:active { color: var(--accent); }
 
+    .laji-badge {
+      font-size: 1.2rem;
+      min-width: 24px;
+      text-align: center;
+    }
+
     .tyhja {
       text-align: center;
       color: var(--muted);
@@ -209,7 +223,7 @@
 <body>
 
 <header>
-  <h1>Rottien <span>Pyydystys</span></h1>
+  <h1>Rottien &amp; Hiirten <span>Pyydystys</span></h1>
 </header>
 
 <main>
@@ -217,17 +231,29 @@
 
   <div class="card">
     <h2>Uusi saalis</h2>
-    <div class="input-row">
+    <div class="input-row" style="margin-bottom:10px">
       <input type="datetime-local" id="aikasyote" />
-      <button id="tallenna">Tallenna</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn-saalis" id="tallenna-rotta">🐀 Rotta</button>
+      <button class="btn-saalis" id="tallenna-hiiri">🐭 Hiiri</button>
     </div>
   </div>
 
-  <div class="stat">
-    <div class="stat-icon">🐀</div>
-    <div class="stat-info">
-      <div class="label">Rotat yhteensä</div>
-      <div class="value" id="kokonaism">—</div>
+  <div style="display:flex;gap:12px">
+    <div class="stat" style="flex:1">
+      <div class="stat-icon">🐀</div>
+      <div class="stat-info">
+        <div class="label">Rotat</div>
+        <div class="value" id="maara-rotta">—</div>
+      </div>
+    </div>
+    <div class="stat" style="flex:1">
+      <div class="stat-icon">🐭</div>
+      <div class="stat-info">
+        <div class="label">Hiiret</div>
+        <div class="value" id="maara-hiiri" style="color:#a07de0">—</div>
+      </div>
     </div>
   </div>
 
@@ -263,26 +289,33 @@
   setNyt();
 
   // --- Tallenna ---
-  const tallennaBtn = document.getElementById('tallenna');
-  tallennaBtn.addEventListener('click', async () => {
+  async function tallenna(laji) {
     if (!aikaEl.value) return;
-    tallennaBtn.disabled = true;
+    const btns = document.querySelectorAll('.btn-saalis');
+    btns.forEach(b => b.disabled = true);
     try {
       const aika = new Date(aikaEl.value);
-      await addDoc(col, { aika: Timestamp.fromDate(aika) });
+      await addDoc(col, { aika: Timestamp.fromDate(aika), laji });
       setNyt();
     } catch (e) {
       naytaVirhe('Tallennus epäonnistui: ' + e.message);
     } finally {
-      tallennaBtn.disabled = false;
+      btns.forEach(b => b.disabled = false);
     }
-  });
+  }
+
+  document.getElementById('tallenna-rotta').addEventListener('click', () => tallenna('rotta'));
+  document.getElementById('tallenna-hiiri').addEventListener('click', () => tallenna('hiiri'));
 
   // --- Reaaliaikainen lista ---
   const q = query(col, orderBy('aika', 'desc'));
   onSnapshot(q, snap => {
     const docs = snap.docs;
-    document.getElementById('kokonaism').textContent = docs.length;
+    const rottat = docs.filter(d => (d.data().laji || 'rotta') === 'rotta').length;
+    const hiiret = docs.filter(d => d.data().laji === 'hiiri').length;
+    document.getElementById('maara-rotta').textContent = rottat;
+    document.getElementById('maara-hiiri').textContent = hiiret;
+
     const lista = document.getElementById('lista');
     if (docs.length === 0) {
       lista.innerHTML = '<div class="tyhja">Ei vielä saaliita.</div>';
@@ -290,11 +323,15 @@
     }
     lista.innerHTML = '';
     docs.forEach((d, i) => {
-      const aika = d.data().aika.toDate();
+      const data = d.data();
+      const aika = data.aika.toDate();
+      const laji = data.laji || 'rotta';
+      const ikoni = laji === 'hiiri' ? '🐭' : '🐀';
       const el = document.createElement('div');
       el.className = 'tapahtuma';
       el.innerHTML = `
         <span class="nro">#${docs.length - i}</span>
+        <span class="laji-badge">${ikoni}</span>
         <span class="pvm">${formatAika(aika)}</span>
         <button class="poista" title="Poista">✕</button>
       `;
