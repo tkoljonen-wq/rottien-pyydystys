@@ -52,6 +52,17 @@
 
     header h1 span { color: var(--accent); }
 
+    /* Auth-tila indikaattori */
+    #auth-status {
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin-top: 4px;
+      min-height: 1em;
+    }
+
+    #auth-status.ok { color: #4caf7d; }
+    #auth-status.err { color: var(--accent); }
+
     main {
       flex: 1;
       overflow-y: auto;
@@ -195,6 +206,12 @@
 
     .tapahtuma .poista:active { color: var(--accent); }
 
+    /* Piilota poisto-nappi jos merkintä ei ole oma */
+    .tapahtuma .poista:disabled {
+      opacity: 0.2;
+      cursor: not-allowed;
+    }
+
     .laji-badge {
       font-size: 1.2rem;
       min-width: 24px;
@@ -218,12 +235,68 @@
       color: #ff8080;
       display: none;
     }
+
+    /* --- Poisto-modal --- */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 24px 20px;
+      max-width: 300px;
+      width: 90%;
+      text-align: center;
+    }
+
+    .modal p {
+      margin-bottom: 20px;
+      color: var(--text);
+      font-size: 0.95rem;
+    }
+
+    .modal-btns {
+      display: flex;
+      gap: 10px;
+    }
+
+    .modal-btns button {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    #modal-peruuta {
+      background: var(--card);
+      color: var(--text);
+    }
+
+    #modal-poista {
+      background: var(--accent);
+      color: #fff;
+    }
   </style>
 </head>
 <body>
 
 <header>
   <h1>Rottien &amp; Hiirten <span>Pyydystys</span></h1>
+  <div id="auth-status">Yhdistetään...</div>
 </header>
 
 <main>
@@ -235,8 +308,8 @@
       <input type="datetime-local" id="aikasyote" />
     </div>
     <div class="btn-row">
-      <button class="btn-saalis" id="tallenna-rotta">🐀 Rotta</button>
-      <button class="btn-saalis" id="tallenna-hiiri">🐭 Hiiri</button>
+      <button class="btn-saalis" id="tallenna-rotta" disabled>🐀 Rotta</button>
+      <button class="btn-saalis" id="tallenna-hiiri" disabled>🐭 Hiiri</button>
     </div>
   </div>
 
@@ -261,17 +334,35 @@
   <div id="lista"><div class="tyhja">Ladataan...</div></div>
 </main>
 
+<!-- Poisto-modal (korvaa confirm()) -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <p>Poistetaanko tämä merkintä?</p>
+    <div class="modal-btns">
+      <button id="modal-peruuta">Peruuta</button>
+      <button id="modal-poista">Poista</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
   import {
     getFirestore, collection, addDoc, deleteDoc, doc,
     onSnapshot, orderBy, query, Timestamp
   } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+  import {
+    getAuth, signInAnonymously, onAuthStateChanged
+  } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
   import { firebaseConfig } from './firebase-config.js';
+
+  // --- Sallitut lajit (validointi) ---
+  const SALLITUT_LAJIT = ['rotta', 'hiiri'];
 
   // --- Init ---
   const app = initializeApp(firebaseConfig);
   const db  = getFirestore(app);
+  const auth = getAuth(app);
   const col = collection(db, 'saaliit');
 
   // --- PWA service worker ---
@@ -289,14 +380,57 @@
   }
   setNyt();
 
+  // --- Auth-tila ---
+  const authStatusEl = document.getElementById('auth-status');
+  let currentUid = null;
+  let unsubscribeSnapshot = null;
+
+  onAuthStateChanged(auth, user => {
+    if (user) {
+      currentUid = user.uid;
+      authStatusEl.textContent = '🔒 Yhdistetty';
+      authStatusEl.className = 'ok';
+      // Aktivoi napit
+      document.getElementById('tallenna-rotta').disabled = false;
+      document.getElementById('tallenna-hiiri').disabled = false;
+      // Käynnistä Firestore-kuuntelu vasta kirjautumisen jälkeen
+      kaynnistaNakyma();
+    } else {
+      currentUid = null;
+      authStatusEl.textContent = 'Ei yhteyttä';
+      authStatusEl.className = 'err';
+      document.getElementById('tallenna-rotta').disabled = true;
+      document.getElementById('tallenna-hiiri').disabled = true;
+      if (unsubscribeSnapshot) unsubscribeSnapshot();
+    }
+  });
+
+  // Kirjaudu anonyyminä automaattisesti
+  signInAnonymously(auth).catch(e => {
+    naytaVirhe('Kirjautuminen epäonnistui: ' + e.message);
+    authStatusEl.textContent = 'Kirjautumisvirhe';
+    authStatusEl.className = 'err';
+  });
+
   // --- Tallenna ---
   async function tallenna(laji) {
+    // Validoi laji
+    if (!SALLITUT_LAJIT.includes(laji)) return;
     if (!aikaEl.value) return;
+    if (!currentUid) {
+      naytaVirhe('Et ole kirjautunut. Yritä uudelleen.');
+      return;
+    }
+
     const btns = document.querySelectorAll('.btn-saalis');
     btns.forEach(b => b.disabled = true);
     try {
       const aika = new Date(aikaEl.value);
-      await addDoc(col, { aika: Timestamp.fromDate(aika), laji });
+      await addDoc(col, {
+        aika: Timestamp.fromDate(aika),
+        laji,
+        uid: currentUid   // tallennetaan omistaja
+      });
       setNyt();
     } catch (e) {
       naytaVirhe('Tallennus epäonnistui: ' + e.message);
@@ -309,47 +443,80 @@
   document.getElementById('tallenna-hiiri').addEventListener('click', () => tallenna('hiiri'));
 
   // --- Reaaliaikainen lista ---
-  const q = query(col, orderBy('aika', 'desc'));
-  onSnapshot(q, snap => {
-    const docs = snap.docs;
-    const rottat = docs.filter(d => (d.data().laji || 'rotta') === 'rotta').length;
-    const hiiret = docs.filter(d => d.data().laji === 'hiiri').length;
-    document.getElementById('maara-rotta').textContent = rottat;
-    document.getElementById('maara-hiiri').textContent = hiiret;
+  function kaynnistaNakyma() {
+    const q = query(col, orderBy('aika', 'desc'));
+    unsubscribeSnapshot = onSnapshot(q, snap => {
+      const docs = snap.docs;
+      const rottat = docs.filter(d => (d.data().laji || 'rotta') === 'rotta').length;
+      const hiiret = docs.filter(d => d.data().laji === 'hiiri').length;
+      document.getElementById('maara-rotta').textContent = rottat;
+      document.getElementById('maara-hiiri').textContent = hiiret;
 
-    const lista = document.getElementById('lista');
-    if (docs.length === 0) {
-      lista.innerHTML = '<div class="tyhja">Ei vielä saaliita.</div>';
-      return;
-    }
-    lista.innerHTML = '';
-    docs.forEach((d, i) => {
-      const data = d.data();
-      const aika = data.aika.toDate();
-      const laji = data.laji || 'rotta';
-      const ikoni = laji === 'hiiri' ? '🐭' : '🐀';
-      const el = document.createElement('div');
-      el.className = 'tapahtuma';
-      el.innerHTML = `
-        <span class="nro">#${docs.length - i}</span>
-        <span class="laji-badge">${ikoni}</span>
-        <span class="pvm">${formatAika(aika)}</span>
-        <button class="poista" title="Poista">✕</button>
-      `;
-      el.querySelector('.poista').addEventListener('click', () => poista(d.id));
-      lista.appendChild(el);
+      const lista = document.getElementById('lista');
+      if (docs.length === 0) {
+        lista.innerHTML = '<div class="tyhja">Ei vielä saaliita.</div>';
+        return;
+      }
+      lista.innerHTML = '';
+      docs.forEach((d, i) => {
+        const data = d.data();
+        const aika = data.aika.toDate();
+        const laji = data.laji || 'rotta';
+        const ikoni = laji === 'hiiri' ? '🐭' : '🐀';
+        const omaItem = data.uid === currentUid;
+
+        const el = document.createElement('div');
+        el.className = 'tapahtuma';
+        el.innerHTML = `
+          <span class="nro">#${docs.length - i}</span>
+          <span class="laji-badge">${ikoni}</span>
+          <span class="pvm">${formatAika(aika)}</span>
+          <button class="poista" title="${omaItem ? 'Poista' : 'Et voi poistaa toisen merkintää'}"
+            ${omaItem ? '' : 'disabled'}>✕</button>
+        `;
+        if (omaItem) {
+          el.querySelector('.poista').addEventListener('click', () => avaaPoistaModal(d.id));
+        }
+        lista.appendChild(el);
+      });
+    }, err => {
+      naytaVirhe('Yhteysongelma: ' + err.message);
     });
-  }, err => naytaVirhe('Yhteysongelma: ' + err.message));
+  }
 
-  // --- Poista ---
-  async function poista(id) {
-    if (!confirm('Poistetaanko tämä merkintä?')) return;
+  // --- Poista-modal (korvaa confirm()) ---
+  let poistettavaId = null;
+  const modalOverlay = document.getElementById('modal-overlay');
+
+  function avaaPoistaModal(id) {
+    poistettavaId = id;
+    modalOverlay.classList.add('active');
+  }
+
+  document.getElementById('modal-peruuta').addEventListener('click', () => {
+    poistettavaId = null;
+    modalOverlay.classList.remove('active');
+  });
+
+  document.getElementById('modal-poista').addEventListener('click', async () => {
+    modalOverlay.classList.remove('active');
+    if (!poistettavaId) return;
     try {
-      await deleteDoc(doc(db, 'saaliit', id));
+      await deleteDoc(doc(db, 'saaliit', poistettavaId));
     } catch (e) {
       naytaVirhe('Poisto epäonnistui: ' + e.message);
+    } finally {
+      poistettavaId = null;
     }
-  }
+  });
+
+  // Sulje modal taustaa klikkaamalla
+  modalOverlay.addEventListener('click', e => {
+    if (e.target === modalOverlay) {
+      poistettavaId = null;
+      modalOverlay.classList.remove('active');
+    }
+  });
 
   // --- Apufunktiot ---
   function formatAika(d) {
