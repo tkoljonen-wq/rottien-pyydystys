@@ -1,4 +1,4 @@
-const CACHE = 'rotat-v2';
+const CACHE = 'rotat-v3';
 const ASSETS = ['./', './index.html', './manifest.json', './firebase-config.js'];
 
 self.addEventListener('install', e => {
