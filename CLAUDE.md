@@ -50,7 +50,7 @@ Säännöt rajoittavat pääsyn kirjautuneille käyttäjille. Tärkeimmät peria
 
 ## Service Worker
 
-- Välimuistiavain: `rotat-v2` – **muista päivittää** (`rotat-v3` jne.) aina kun tiedostoja muutetaan, jotta käyttäjät saavat uuden version
+- Välimuistiavain: `rotat-v3` – **muista päivittää** (`rotat-v3` jne.) aina kun tiedostoja muutetaan, jotta käyttäjät saavat uuden version
 - Välimuistissa: `./`, `index.html`, `manifest.json`, `firebase-config.js`
 - Strategia: network-first, fallback välimuistiin
 
