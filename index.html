@@ -467,16 +467,33 @@
 
         const el = document.createElement('div');
         el.className = 'tapahtuma';
-        el.innerHTML = `
-          <span class="nro">#${docs.length - i}</span>
-          <span class="laji-badge">${ikoni}</span>
-          <span class="pvm">${formatAika(aika)}</span>
-          <button class="poista" title="${omaItem ? 'Poista' : 'Et voi poistaa toisen merkintää'}"
-            ${omaItem ? '' : 'disabled'}>✕</button>
-        `;
-        if (omaItem) {
-          el.querySelector('.poista').addEventListener('click', () => avaaPoistaModal(d.id));
+
+        const nroEl = document.createElement('span');
+        nroEl.className = 'nro';
+        nroEl.textContent = `#${docs.length - i}`;
+
+        const ikonEl = document.createElement('span');
+        ikonEl.className = 'laji-badge';
+        ikonEl.textContent = ikoni;
+
+        const pvmEl = document.createElement('span');
+        pvmEl.className = 'pvm';
+        pvmEl.textContent = formatAika(aika);
+
+        const poistaBtn = document.createElement('button');
+        poistaBtn.className = 'poista';
+        poistaBtn.textContent = '✕';
+        poistaBtn.title = omaItem ? 'Poista' : 'Et voi poistaa toisen merkintää';
+        if (!omaItem) {
+          poistaBtn.disabled = true;
+        } else {
+          poistaBtn.addEventListener('click', () => avaaPoistaModal(d.id));
         }
+
+        el.appendChild(nroEl);
+        el.appendChild(ikonEl);
+        el.appendChild(pvmEl);
+        el.appendChild(poistaBtn);
         lista.appendChild(el);
       });
     }, err => {
