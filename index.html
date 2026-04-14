@@ -444,6 +444,7 @@
 
   // --- Reaaliaikainen lista ---
   function kaynnistaNakyma() {
+    if (unsubscribeSnapshot) return; // estetään päällekkäiset kuuntelijat
     const q = query(col, orderBy('aika', 'desc'));
     unsubscribeSnapshot = onSnapshot(q, snap => {
       const docs = snap.docs;
